@@ -102,7 +102,7 @@ if ($addenda=="detallista") {
     satxmlsv33_cargaAtt($root, array("xmlns:cfdi"=>"http://www.sat.gob.mx/cfd/3",
                           "xmlns:xsi"=>"http://www.w3.org/2001/XMLSchema-instance",
                           "xmlns:pago10"=>"http://www.sat.gob.mx/Pagos",
-                          "xsi:schemaLocation"=>"http://www.sat.gob.mx/cfd/3 http://www.sat.gob.mx/sitio_internet/cfd/3/cfdv33.xsd http://www.sat.gob.mx/Pagos http://www.sat.gob.mx/sitio_internet/cfd/Pagos/Pagos.xsd"
+                          "xsi:schemaLocation"=>"http://www.sat.gob.mx/cfd/3 http://www.sat.gob.mx/sitio_internet/cfd/3/cfdv33.xsd http://www.sat.gob.mx/Pagos http://www.sat.gob.mx/sitio_internet/cfd/Pagos/Pagos10.xsd"
                          )
                 );
 } elseif ($addenda=="diconsa") {

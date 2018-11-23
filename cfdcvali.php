@@ -132,9 +132,9 @@ $paso = $fmt->formatString($texto);
 if (substr($paso,0,10)!="XML_Parser") $texto=$paso; // XML correctamente formado
 ?>
 <div align=left>
-<script src="/fortiz/code/codemirror/lib/codemirror.js"></script>
-<link rel="stylesheet" href="/fortiz/code/codemirror/lib/codemirror.css">
-<script src="/fortiz/code/codemirror/mode/xml/xml.js"></script>
+<script src="codemirror/lib/codemirror.js"></script>
+<link rel="stylesheet" href="codemirror/lib/codemirror.css">
+<script src="codemirror/mode/xml/xml.js"></script>
 <textarea rows=40 cols=120 name=texto id=texto>
 <?php echo $texto; ?>
 </textarea>
@@ -419,6 +419,7 @@ function semantica_cfdi() {
     $sem = new Sem_CFDI();
     $sem->valida($xml,$conn);
     echo "<h2>$sem->codigo</h2>";
+    echo "<h2>$sem->mensaje</h2>";
     echo "<hr/>";
 }
 // }}} Valida semantica nomi12
@@ -643,8 +644,6 @@ echo "<hr>";
 // ftp://ftp2.sat.gob.mx/asistencia_servicio_ftp/publicaciones/cfdi/WS_ConsultaCFDI.pdf
 function valida_en_sat() {
     global $data;
-    $url = "https://consultaqr.facturaelectronica.sat.gob.mx/consultacfdiservice.svc?wsdl";
-    $soapclient = new SoapClient($url);
     $rfc_emisor = utf8_encode($data['rfc']);
     $rfc_receptor = utf8_encode($data['rfc_receptor']);
     $impo = (double)$data['total'];
@@ -653,12 +652,54 @@ function valida_en_sat() {
     $uuid = strtoupper($data['uuid']);
     $factura = "?re=$rfc_emisor&rr=$rfc_receptor&tt=$impo&id=$uuid";
     echo "<h3>$factura</h3>";
-    $prm = array('expresionImpresa'=>$factura);
-    $buscar=$soapclient->Consulta($prm);
-    echo "<h3>El portal del SAT reporta</h3>";
-    echo "El codigo: ".$buscar->ConsultaResult->CodigoEstatus."<br>";
-    echo "El estado: ".$buscar->ConsultaResult->Estado."<br>";
-
+    $msg = <<<EOD
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <tem:Consulta>
+         <!--Optional:-->
+         <tem:expresionImpresa><![CDATA[%%PRM%%]]></tem:expresionImpresa>
+      </tem:Consulta>
+   </soapenv:Body>
+</soapenv:Envelope>
+EOD;
+    $msg = str_replace("%%PRM%%",$factura,$msg);
+    try {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_HEADER,1);
+        curl_setopt($ch, CURLINFO_HEADER_OUT, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+           'Content-type: text/xml;charset="utf-8"',
+           'Accept: text/xml',
+           'SOAPAction: http://tempuri.org/IConsultaCFDIService/Consulta',
+           'cache-control: no-cache',
+           'Host: consultaqr.facturaelectronica.sat.gob.mx'
+                ));
+        $url = "https://consultaqr.facturaelectronica.sat.gob.mx/ConsultaCFDIService.svc";
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_POST, 1 );
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_VERBOSE, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $msg);
+        $response = curl_exec($ch);
+        $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        $ret = substr($response, $header_size);
+        $codigostatus=""; $escancelable="";
+        $estado=""; $estatuscancelacion="";
+        if (preg_match("/<a:CodigoEstatus>(.*)<\/a:CodigoEstatus>/",$ret,$match)) $codigostatus = $match[1];
+        if (preg_match("/<a:EsCancelable>(.*)<\/a:EsCancelable>/",$ret,$match)) $escancelable = $match[1];
+        if (preg_match("/<a:Estado>(.*)<\/a:Estado>/",$ret,$match)) $estado = $match[1];
+        if (preg_match("/<a:EstatusCancelacion>(.*)<\/a:EstatusCancelacion>/",$ret,$match)) $estatuscancelacion = $match[1];
+        echo "<h3>El portal del SAT reporta</h3>";
+        echo "El codigo: $codigostatus<br>";
+        echo "El estado: $estado<br>";
+        echo "EsCancelable: $escancelable<br>";
+        echo "EstatusCancelacion: $estatuscancelacion<br>";
+    } catch (Exception $e) {
+        echo "<h3>No se pudo accesar el portal del SAT</h3>";
+        echo $e;
+    }
 }
 // }}}
 // {{{ Lee del FTP del SAT la llave Publica (Certificado) del CSD
@@ -689,13 +730,7 @@ function get_sat_cert($no_cert) {
         $p3=substr($no_cert,12,2);
         $p4=substr($no_cert,14,2);
         $p5=substr($no_cert,16,2);
-        $path1 = "ftp://ftp2.sat.gob.mx/certificados/FEA/$p1/$p2/$p3/$p4/$p5/$no_cert.cer";
-        // Nuevo servidor mas rapido (menos conocido) (Gracias Rene)
-        $path2 = "https://rdc.sat.gob.mx/rccf/$p1/$p2/$p3/$p4/$p5/$no_cert.cer";
-        // Realiza 5 intentos para descargar el certificado
-        // Gracias Rene Calderon
-        //
-        // Se ignora el ceftificado del servidor rdc del sat
+        $path = "https://rdc.sat.gob.mx/rccf/$p1/$p2/$p3/$p4/$p5/$no_cert.cer";
         $arrContextOptions=array(
                 "ssl"=>array(
                     "verify_peer"=>false,
@@ -706,11 +741,9 @@ function get_sat_cert($no_cert) {
         $done = false;
         $x = 0;
         while ( ! $done ){
-            //echo "intento: $x<br>";
-            // Alterna servidor en cada intento ....
-            $path = (($x%2)==0) ? $path1 : $path2;
             $der = file_get_contents("$path",false,$context);
             echo "Lee del SAT $path<br>";
+            var_dump($der);
             if ($der){
                 $done = true;  
             } else {
