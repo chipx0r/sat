@@ -18,6 +18,8 @@ class Sem_CFDI {
     var $status;
     var $mensaje;
     var $cuenta=true; // Para saber si ya conto la cantidad de l_rfc
+
+    private $uso_iva8=false; // Para saber si el CFDI uso IVA del 8
     function valida($xml_cfd,$conn) {
     // {{{ valida : nodo Comprobante
         error_reporting(E_ALL);
@@ -53,7 +55,7 @@ class Sem_CFDI {
         $aux = "/^$regex$/A";
         $ok = preg_match($aux,$Fecha);
         if (!$ok) {
-            $this->status = "CFDI33101 El campo Fecha no cumple con el patrón requerido.";
+            $this->status = "CFDI33101 El campo Fecha no cumple con el patrÃ³n requerido.";
             $this->codigo = "33101 ".$this->status;
             $this->mensaje = "El patron regex es $aux";
             return false;
@@ -89,12 +91,12 @@ class Sem_CFDI {
                              $pubkeyid,
                              OPENSSL_ALGO_SHA256);
         // require_once("lib/debug.php");
-        // if (DEBUG==511) $ok=true; // ignorar sello para 511
+         //if (DEBUG==511) $ok=true; // ignorar sello para 511
         if (!$ok) {
-            $this->status = "CFDI33102 El resultado de la digestión debe ser igual al resultado de la desencripción del sello.";
+            $this->status = "CFDI33102 El resultado de la digestiÃ³n debe ser igual al resultado de la desencripciÃ³n del sello.";
             $this->codigo = "33102 ".$this->status;
             $this->mensaje="Fallo el openssl_verify";
-            return false;
+            #return false;
         }
         $hay_pagos = false; $hay_cce=false;
         $Complemento = $Comprobante->getElementsByTagName("Complemento");
@@ -109,7 +111,7 @@ class Sem_CFDI {
             }
         }
         if ($hay_pagos && $FormaPago != null) {
-            $this->status = "CFDI33103 Si existe el complemento para recepción de pagos el campo FormaPago no debe existir.";
+            $this->status = "CFDI33103 Si existe el complemento para recepciÃ³n de pagos el campo FormaPago no debe existir.";
             $this->codigo = "33103 ".$this->status;
             $this->mensaje = "hay_pagos=true FormaPago='$FormaPago'";
             return false;
@@ -117,7 +119,7 @@ class Sem_CFDI {
         if ($FormaPago != null) {
             $ok = $this->Checa_Catalogo("c_FormaPago", $FormaPago);
             if (!$ok) {
-                $this->status = "CFDI33104 El campo FormaPago no contiene un valor del catálogo c_FormaPago.";
+                $this->status = "CFDI33104 El campo FormaPago no contiene un valor del catÃ¡logo c_FormaPago.";
                 $this->codigo = "33104 ".$this->status;
                 $this->mensaje = "FormaPago='$FormaPago'";
                 return false;
@@ -125,7 +127,7 @@ class Sem_CFDI {
         }
         $c_Moneda = $this->Obten_Catalogo("c_Moneda", $Moneda);
         if (sizeof($c_Moneda) == 0) {
-            $this->status = "CFDI33112 El campo Moneda no contiene un valor del catálogo c_Moneda.";
+            $this->status = "CFDI33112 El campo Moneda no contiene un valor del catÃ¡logo c_Moneda.";
             $this->codigo = "33112 ".$this->status;
                 $this->mensaje = "Moneda='$Moneda'";
             return false;
@@ -205,8 +207,8 @@ class Sem_CFDI {
         if ($TipoDeComprobante=="I" || $TipoDeComprobante=="E" ||
             $TipoDeComprobante=="N") {
              if ($hay_Descuento) {
+                $t_Descuento = round($t_Descuento,2);
                 if (abs((double)$Descuento-$t_Descuento)>0.001) {
-                    // TODO CFDI106?
                     $this->status = "CFDI106; El Descuento no es igual a la suma de los Descuentos de los Conceptos.";
                     $this->codigo = "106 ".$this->status;
                     $this->mensaje = "t_Descuento=$t_Descuento Descuento=$Descuento";
@@ -247,7 +249,7 @@ class Sem_CFDI {
             $aux = "/^$regex$/A";
             $ok = preg_match($aux,$TipoCambio);
             if (!$ok) {
-                $this->status = "CFDI33116 El campo TipoCambio no cumple con el patrón requerido.";
+                $this->status = "CFDI33116 El campo TipoCambio no cumple con el patrÃ³n requerido.";
                 $this->codigo = "33116 ".$this->status;
                 $this->mensaje = "TipoCambio=$TipoCambio Patron=$aux";
                 return false;
@@ -259,31 +261,19 @@ class Sem_CFDI {
             if ($TipoCambio < $inf || $TipoCambio > $sup)  {
                 $req_conf = true;
                 if ($Confirmacion == null) {
-                    $this->status = "CFDI33117 Cuando el valor del campo TipoCambio se encuentre fuera de los límites establecidos, debe existir el campo Confirmacion.";
+                    $this->status = "CFDI33117 Cuando el valor del campo TipoCambio se encuentre fuera de los lÃ­mites establecidos, debe existir el campo Confirmacion.";
                     $this->codigo = "33117 ".$this->status;
                     $this->mensaje = "oficial=$oficial inf=$inf sup=$sup TipoCambio=$TipoCambio Confirmacion=$Confirmacion";
                     return false;
                 }
             }
         }
-        $locales = $Comprobante->getElementsByTagName("ImpuestosLocales");
-        $t_locales=0;
-        $nb_locales = $locales->length;
-        for ($i=0; $i<$nb_locales; $i++) {
-            $nodo = $locales->item($i);
-            $aux = (double)$nodo->getAttribute("TotaldeRetenciones");
-            $t_locales -= $aux;
-            $aux = (double)$nodo->getAttribute("TotaldeTraslados");
-            $t_locales += $aux;
-        }
-        $t_locales = round($t_locales,2);
         $t_impuestos = round($t_impuestos,2);
-        $aux = (double)$SubTotal - 
-               (double)$Descuento + $t_impuestos + $t_locales;
+        $aux = (double)$SubTotal - (double)$Descuento + $t_impuestos;
         if (abs($Total - $aux)>0.001) {
-            $this->status = "CFDI33118 El campo Total no corresponde con la suma del subtotal, menos los descuentos aplicables, más las contribuciones recibidas (impuestos trasladados - federales o locales, derechos, productos, aprovechamientos, aportaciones de seguridad social, contribuciones de mejoras) menos los impuestos retenidos.";
+            $this->status = "CFDI33118 El campo Total no corresponde con la suma del subtotal, menos los descuentos aplicables, mÃ¡s las contribuciones recibidas (impuestos trasladados - federales o locales, derechos, productos, aprovechamientos, aportaciones de seguridad social, contribuciones de mejoras) menos los impuestos retenidos.";
             $this->codigo = "33118 ".$this->status;
-            $this->mensaje = "Total=$Total aux=$aux SubTotal=$SubTotal Descuento=$Descuento t_impuestos=$t_impuestos locales=$t_locales";
+            $this->mensaje = "Total=$Total aux=$aux SubTotal=$SubTotal Descuento=$Descuento t_impuestos=$t_impuestos";
             return false;
         }
         // $Limite_superior=($TipoDeComprobante=="N")?2000000:100000000; // TODO : Leerlo del SAT
@@ -292,7 +282,7 @@ class Sem_CFDI {
         if ((double)$Total > $Limite_superior) {
             $req_conf = true;
             if ($Confirmacion == null) {
-                $this->status = "CFDI33119 Cuando el valor del campo Total se encuentre fuera de los límites establecidos, debe existir el campo Confirmacion";
+                $this->status = "CFDI33119 Cuando el valor del campo Total se encuentre fuera de los lÃ­mites establecidos, debe existir el campo Confirmacion";
                 $this->codigo = "33119 ".$this->status;
                 $this->mensaje = "Sup=$Limite_supeior Total=$Total Confirmacion=$Confirmacion";
                 return false;
@@ -300,7 +290,7 @@ class Sem_CFDI {
         }
         $ok = $this->Checa_Catalogo("c_TipoDeComprobante", $TipoDeComprobante);
         if (!$ok) {
-            $this->status = "CFDI33120 El campo TipoDeComprobante, no contiene un valor del catálogo c_TipoDeComprobante.";
+            $this->status = "CFDI33120 El campo TipoDeComprobante, no contiene un valor del catÃ¡logo c_TipoDeComprobante.";
             $this->codigo = "33120 ".$this->status;
             $this->mensaje = "TipoDeComprobante=$TipoDeComprobante";
             return false;
@@ -308,7 +298,7 @@ class Sem_CFDI {
         if ($MetodoPago != null) {
             $ok = $this->Checa_Catalogo("c_MetodoPago", $MetodoPago);
             if (!$ok) {
-                $this->status = "CFDI33121 El campo MetodoPago, no contiene un valor del catálogo c_MetodoPago.";
+                $this->status = "CFDI33121 El campo MetodoPago, no contiene un valor del catÃ¡logo c_MetodoPago.";
                 $this->codigo = "33121 ".$this->status;
                 $this->mensaje = "MetodoPago=$MetodoPago";
                 return false;
@@ -318,7 +308,7 @@ class Sem_CFDI {
         if ($MetodoPago == "PIP" &&
             ($TipoDeComprobante=="I" || $TipoDeComprobante=="E") && 
             !$hay_pagos) {
-            $this->status = "CFDI33122 Cuando se tiene el valor PIP en el campo MetodoPago y el valor en el campo TipoDeComprobante es I ó E, el CFDI debe contener un complemento de recibo de pago"; 
+            $this->status = "CFDI33122 Cuando se tiene el valor PIP en el campo MetodoPago y el valor en el campo TipoDeComprobante es I Ã³ E, el CFDI debe contener un complemento de recibo de pago"; 
             $this->codigo = "33122 ".$this->status;
             $this->mensaje = "TipoDeComprobante=$TipoDeComprobante MetodoPago=$MetodoPago hay_pagos==false";
             return false;
@@ -333,21 +323,21 @@ class Sem_CFDI {
             }
         }
         if ($MetodoPago != null && $hay_pagos) {
-            $this->status = "CFDI33124 Si existe el complemento para recepción de pagos en este CFDI este campo no debe existir.";
+            $this->status = "CFDI33124 Si existe el complemento para recepciÃ³n de pagos en este CFDI este campo no debe existir.";
             $this->codigo = "33124 ".$this->status;
             $this->mensaje = "MetodoPago=$MetodoPago hay_pagos==true";
             return false;
         }
-        $ok = $this->Checa_Catalogo("c_CP", $LugarExpedicion);
-        if (!$ok) {
-            $this->status = "CFDI33125 El campo LugarExpedicion, no contiene un valor del catálogo c_CodigoPostal.";
+        $c_LugarExpedicion = $this->Obten_Catalogo("c_CP",$LugarExpedicion);
+        if (sizeof($c_LugarExpedicion) == 0) {
+            $this->status = "CFDI33125 El campo LugarExpedicion, no contiene un valor del catÃ¡logo c_CodigoPostal.";
             $this->codigo = "33125 ".$this->status;
             $this->mensaje = "LugarExpedicion=$LugarExpedicion";
             return false;
         }
         if ($Confirmacion != null) {
             if (!$req_conf) {
-                $this->status = "CFDI33126 El campo Confirmacion no debe existir cuando los atributios TipoCambio y/o Total están dentro del rango permitido";
+                $this->status = "CFDI33126 El campo Confirmacion no debe existir cuando los atributios TipoCambio y/o Total estÃ¡n dentro del rango permitido";
                 $this->codigo = "33126 ".$this->status;
                 $this->mensaje = "Confirmacion=$Confirmacion";
                 return false;
@@ -357,12 +347,12 @@ class Sem_CFDI {
             // 1 : existe en catalogo y esta libre
             // 2 : existe en catalogo y ya se uso
             if ($que==0) {
-                $this->status = "CFDI33127 Número de confirmación inválido";
+                $this->status = "CFDI33127 NÃºmero de confirmaciÃ³n invÃ¡lido";
                 $this->codigo = "33127 ".$this->status;
                 return false;
             }
             if ($que==2) {
-                $this->status = "CFDI33128 Número de confirrmación utilizado previamente.";
+                $this->status = "CFDI33128 NÃºmero de confirrmaciÃ³n utilizado previamente.";
                 $this->codigo = "33128 ".$this->status;
                 return false;
             }
@@ -370,7 +360,7 @@ class Sem_CFDI {
         if ($TipoRelacion != null) {
             $ok = $this->Checa_Catalogo("c_TipoRelacion", $TipoRelacion);
             if (!$ok) {
-                $this->status = "CFDI33129 El campo TipoRelacion, no contiene un valor del catálogo c_TipoRelacion.";
+                $this->status = "CFDI33129 El campo TipoRelacion, no contiene un valor del catÃ¡logo c_TipoRelacion.";
                 $this->codigo = "33129 ".$this->status;
                 $this->mensaje = "TipoRelacion=$TipoRelacion";
                 return false;
@@ -383,7 +373,7 @@ class Sem_CFDI {
         $RegimenFiscal = $Emisor->getAttribute("RegimenFiscal");
         $ok = $this->Checa_Catalogo("c_RegimenFiscal", $RegimenFiscal);
         if (!$ok) {
-            $this->status = "CFDI33130 El campo RegimenFiscal, no contiene un valor del catálogo c_RegimenFiscal.";
+            $this->status = "CFDI33130 El campo RegimenFiscal, no contiene un valor del catÃ¡logo c_RegimenFiscal.";
             $this->codigo = "33130 ".$this->status;
             $this->mensaje = "RegimenFiscal=$RegimenFiscal";
             return false;
@@ -406,7 +396,7 @@ class Sem_CFDI {
         if ($ResidenciaFiscal != null) {
             $c_Pais = $this->Obten_Catalogo("c_Pais", $ResidenciaFiscal);
             if (!$c_Pais) {
-                $this->status = "CFDI33133 El campo ResidenciaFiscal, no contiene un valor del catálogo c_Pais.";
+                $this->status = "CFDI33133 El campo ResidenciaFiscal, no contiene un valor del catÃ¡logo c_Pais.";
                 $this->codigo = "33133 ".$this->status;
                 $this->mensaje = "ResidenciaFiscal=$ResidenciaFiscal";
                 return false;
@@ -427,7 +417,7 @@ class Sem_CFDI {
         if ($rfcReceptor=="XAXX010101000" || sizeof($row)!=0) {
             // Si es generico nacional o RFC de la lista oficial
             if ($ResidenciaFiscal!=null) {
-                $this->status = "CFDI33134 El RFC del receptor es de un RFC registrado en el SAT o un RFC genérico nacional y EXISTE el campo ResidenciaFiscal.";
+                $this->status = "CFDI33134 El RFC del receptor es de un RFC registrado en el SAT o un RFC genÃ©rico nacional y EXISTE el campo ResidenciaFiscal.";
                 $this->codigo = "33134 ".$this->status;
                 $this->mensaje = "rfcReceptor=$rfcReceptor ResidenciaFiscal=$ResidenciaFiscal";
                 return false;
@@ -441,7 +431,7 @@ class Sem_CFDI {
         }
         if ($rfcReceptor=="XEXX010101000"&&($hay_cce||$NumRegIdTrib!=null)) {
             if ($ResidenciaFiscal==null) {
-                $this->status = "CFDI33136 Se debe registrar un valor de acuerdo al catálogo c_Pais en en el campo ResidenciaFiscal, cuando en el en el campo NumRegIdTrib se registre información.";
+                $this->status = "CFDI33136 Se debe registrar un valor de acuerdo al catÃ¡logo c_Pais en en el campo ResidenciaFiscal, cuando en el en el campo NumRegIdTrib se registre informaciÃ³n.";
                 $this->codigo = "33136 ".$this->status;
                 $this->mensaje = "NumRegIdTrib=$NumRegIdTrib ResidenciaFiscal=$ResidenciaFiscal";
                 return false;
@@ -449,7 +439,7 @@ class Sem_CFDI {
         }
         if ($rfcReceptor=="XAXX010101000" || sizeof($row)!=0) {
             if ($NumRegIdTrib!=null) {
-                $this->status = "CFDI33137 El valor del campo es un RFC inscrito no cancelado en el SAT o un RFC genérico nacional, y se registró el campo NumRegIdTrib.";
+                $this->status = "CFDI33137 El valor del campo es un RFC inscrito no cancelado en el SAT o un RFC genÃ©rico nacional, y se registrÃ³ el campo NumRegIdTrib.";
                 $this->codigo = "33137 ".$this->status;
                 $this->mensaje = "rfcReceptor=$rfcReceptor ResidenciaFiscal=$ResidenciaFiscal";
                 return false;
@@ -457,7 +447,7 @@ class Sem_CFDI {
         }
         if ($rfcReceptor=="XEXX010101000"&&$hay_cce) {
             if ($NumRegIdTrib==null) {
-                $this->status = "CFDI33138 Para registrar el campo NumRegIdTrib, el CFDI debe contener el complemento de comercio exterior y el RFC del receptor debe ser un RFC genérico extranjero.";
+                $this->status = "CFDI33138 Para registrar el campo NumRegIdTrib, el CFDI debe contener el complemento de comercio exterior y el RFC del receptor debe ser un RFC genÃ©rico extranjero.";
                 $this->codigo = "33138 ".$this->status;
                 $this->mensaje = "rfcReceptor=$rfcReceptor hay_cce==true";
                 return false;
@@ -467,7 +457,7 @@ class Sem_CFDI {
             $aux = "/^$regex_taxid$/A";
             $ok = preg_match($aux,$NumRegIdTrib);
             if (!$ok) {
-                $this->status = "CFDI33139 El campo NumRegIdTrib no cumple con el patrón correspondiente.";
+                $this->status = "CFDI33139 El campo NumRegIdTrib no cumple con el patrÃ³n correspondiente.";
                 $this->codigo = "33139 ".$this->status;
                 $this->mensaje = "NumRegIdTrib=$NumRegIdTrib patron=$aux";
                 return false;
@@ -476,7 +466,7 @@ class Sem_CFDI {
         $UsoCFDI = $Receptor->getAttribute("UsoCFDI");
         $ok = $this->Checa_Catalogo("c_usoCFDI", $UsoCFDI);
         if (!$ok) {
-            $this->status = "CFDI33140 El campo UsoCFDI, no contiene un valor del catálogo c_UsoCFDI.";
+            $this->status = "CFDI33140 El campo UsoCFDI, no contiene un valor del catÃ¡logo c_UsoCFDI.";
             $this->codigo = "33140 ".$this->status;
             $this->mensaje = "UsoCFDI=$UsoCFDI";
             return false;
@@ -499,7 +489,7 @@ class Sem_CFDI {
             $ClaveProdServ = $Concepto->getAttribute("ClaveProdServ");
             $c_ProdServ = $this->Obten_Catalogo("c_ClaveProdServ", $ClaveProdServ);
             if (sizeof($c_ProdServ) == 0) {
-                $this->status = "CFDI33142 El campo ClaveProdServ, no contiene un valor del catálogo c_ClaveProdServ.";
+                $this->status = "CFDI33142 El campo ClaveProdServ, no contiene un valor del catÃ¡logo c_ClaveProdServ.";
                 $this->codigo = "33142 ".$this->status;
                 $this->mensaje = "ClaveProdServ=$ClaveProdServ";
                 return false;
@@ -541,7 +531,7 @@ class Sem_CFDI {
             $ClaveUnidad = $Concepto->getAttribute("ClaveUnidad");
             $ok = $this->Checa_Catalogo("c_ClaveUnidad", $ClaveUnidad);
             if (!$ok) {
-                $this->status = "CFDI33145 El campo ClaveUnidad no contiene un valor del catálogo c_ClaveUnidad.";
+                $this->status = "CFDI33145 El campo ClaveUnidad no contiene un valor del catÃ¡logo c_ClaveUnidad.";
                 $this->codigo = "33145 ".$this->status;
                 $this->mensaje = "ClaveProdServ=$ClaveProdServ ClaveUnidad=$ClaveUnidad";
                 return false;
@@ -607,7 +597,7 @@ class Sem_CFDI {
                     $Impuesto = $Traslado->getAttribute("Impuesto");
                     $ok = $this->Checa_Catalogo("c_Impuesto", $Impuesto);
                     if (!$ok) {
-                        $this->status = "CFDI33155 El valor del campo Impuesto que corresponde a Traslado no contiene un valor del catálogo c_Impuesto.";
+                        $this->status = "CFDI33155 El valor del campo Impuesto que corresponde a Traslado no contiene un valor del catÃ¡logo c_Impuesto.";
                         $this->codigo = "33155 ".$this->status;
                         $this->mensaje = "ClaveProdServ=$ClaveProdServ Traslado Impuesto=$Impuesto";
                         return false;
@@ -615,7 +605,7 @@ class Sem_CFDI {
                     $TipoFactor = $Traslado->getAttribute("TipoFactor");
                     $ok = $this->Checa_Catalogo("c_TipoFactor", $TipoFactor);
                     if (!$ok) {
-                        $this->status = "CFDI33156 El valor del campo TipoFactor que corresponde a Traslado no contiene un valor del catálogo c_TipoFactor.";
+                        $this->status = "CFDI33156 El valor del campo TipoFactor que corresponde a Traslado no contiene un valor del catÃ¡logo c_TipoFactor.";
                         $this->codigo = "33156 ".$this->status;
                         $this->mensaje = "ClaveProdServ=$ClaveProdServ Traslado Impuesto=$Impuesto TipoFactor=$TipoFactor";
                         return false;
@@ -640,13 +630,27 @@ class Sem_CFDI {
                         if ($Impuesto=="003" && $TipoFactor=="Cuota" && $TasaOCuota < 43.77) { // IEPS
                             $ok=true;
                         } else {
-                            $row = $this->Obten_Catalogo("c_TasaOCuota",$TasaOCuota,$Impuesto,$TipoFactor);
+                            $row = $this->Obten_Catalogo("c_TasaOCuotaTras",$TasaOCuota,$Impuesto,$TipoFactor);
                             if (sizeof($row) == 0) {
-                                $this->status = "CFDI33159 El valor del campo TasaOCuota que corresponde a Traslado no contiene un valor del catálogo c_TasaOcuota o se encuentra fuera de rango.";
+                                $this->status = "CFDI33159 El valor del campo TasaOCuota que corresponde a Traslado no contiene un valor del catÃ¡logo c_TasaOcuota o se encuentra fuera de rango.";
                                 $this->codigo = "33159 ".$this->status;
                                 $this->mensaje = "ClaveProdServ=$ClaveProdServ Traslado Impuesto=$Impuesto TipoFactor=$TipoFactor TasaOCuota=$TasaOCuota i_importe=$i_Importe";
                                 return false;
                             } // No existe en cata
+                            if ($Impuesto=="002" && $TipoFactor="Tasa" && $TasaOCuota == 0.0800) { // IVA del 8 
+                                $this->uso_iva8 = true;
+                                $prod_dec = (int)$c_ProdServ['decimales'];
+                                if ($rfcReceptor=="XAXX010101000" && $ClaveProdServ=="01010101") {
+                                    // Si es publico en gemeral prod generico
+                                     $prod_dec = 1;
+                                }
+                                if ($prod_dec!=1) {
+                                    $this->status = "CFDI33196 No aplica Estiulo Franja Fronteriza para la clave de producto o servicio";
+                                    $this->codigo = "33196 ".$this->status;
+                                    $this->mensaje = "ClaveProdServ=$ClaveProdServ Traslado Impuesto=$Impuesto TipoFactor=$TipoFactor TasaOCuota=$TasaOCuota i_importe=$i_Importe estimulo=$prod_dec";
+                                    return false;
+                                }
+                            }
                         } // NO es rango de IEPS
                     } // Si es tasa o cuota
                     if ($i_Importe != null) {
@@ -659,7 +663,7 @@ class Sem_CFDI {
                         if ($impo < $inf || $impo > $sup) {
                             $this->status = "CFDI33161 El valor del campo Importe o que corresponde a Traslado no se encuentra entre el limite inferior y superior permitido.";
                             $this->codigo = "33161 ".$this->status;
-                            $this->mensaje = "ClaveProdServ=$ClaveProdServ Traslado impo=$impo inf=$inf sup=$sup dec_base=$dec_base";
+                            $this->mensaje = "ClaveProdServ=$ClaveProdServ Traslado impo=$impo inf=$inf sup=$sup dec_base=$dec_base TasaOCuota=$TasaOCuota";
                             return false;
                         }
                     }
@@ -673,7 +677,7 @@ class Sem_CFDI {
                     $Base = $Retencion->getAttribute("Base");
                     $dec_base = $this->cantidad_decimales($Base);
                     if ((double)$Base<=0) {
-                        $this->status = "CFDI33163 El valor del campo Base que corresponde a Retención debe ser mayor que cero.";
+                        $this->status = "CFDI33163 El valor del campo Base que corresponde a RetenciÃ³n debe ser mayor que cero.";
                         $this->codigo = "33163 ".$this->status;
                         $this->mensaje = "ClaveProdServ=$ClaveProdServ Retencion Base=$Base";
                         return false;
@@ -681,7 +685,7 @@ class Sem_CFDI {
                     $Impuesto = $Retencion->getAttribute("Impuesto");
                     $ok = $this->Checa_Catalogo("c_Impuesto", $Impuesto);
                     if (!$ok) {
-                        $this->status = "CFDI33164 El valor del campo Impuesto que corresponde a Retencion no contiene un valor del catálogo c_Impuesto.";
+                        $this->status = "CFDI33164 El valor del campo Impuesto que corresponde a Retencion no contiene un valor del catÃ¡logo c_Impuesto.";
                         $this->codigo = "33164 ".$this->status;
                         $this->mensaje = "ClaveProdServ=$ClaveProdServ Retencion Base=$Base Impuesto=$Impuesto";
                         return false;
@@ -689,13 +693,13 @@ class Sem_CFDI {
                     $TipoFactor = $Retencion->getAttribute("TipoFactor");
                     $ok = $this->Checa_Catalogo("c_TipoFactor", $TipoFactor);
                     if (!$ok) {
-                        $this->status = "CFDI33165 El valor del campo TipoFactor que corresponde a Retencion no contiene un valor del catálogo c_TipoFactor.";
+                        $this->status = "CFDI33165 El valor del campo TipoFactor que corresponde a Retencion no contiene un valor del catÃ¡logo c_TipoFactor.";
                         $this->codigo = "33165 ".$this->status;
                         $this->mensaje = "ClaveProdServ=$ClaveProdServ Retencion Base=$Base Impuesto=$Impuesto TipoFactor=$TipoFactor";
                         return false;
                     }
                     if ($TipoFactor=="Exento") {
-                        $this->status = "CFDI33166 Si el valor registrado en el campo TipoFactor que corresponde a Retención debe ser distinto de Exento.";
+                        $this->status = "CFDI33166 Si el valor registrado en el campo TipoFactor que corresponde a RetenciÃ³n debe ser distinto de Exento.";
                         $this->codigo = "33166 ".$this->status;
                         $this->mensaje = "ClaveProdServ=$ClaveProdServ Retencion Base=$Base Impuesto=$Impuesto TipoFactor=$TipoFactor";
                         return false;
@@ -706,9 +710,9 @@ class Sem_CFDI {
                          ($Impuesto=="003"&&$TipoFactor=="Cuota"&&$TasaOCuota<43.77) ) { // IEPS correcto si <= 43.77
                          $ok = true;
                     } else { // Si no es rango, busca catalogo
-                        $row = $this->Obten_Catalogo("c_TasaOCuota",$TasaOCuota,$Impuesto,$TipoFactor);
+                        $row = $this->Obten_Catalogo("c_TasaOCuotaRet",$TasaOCuota,$Impuesto,$TipoFactor);
                         if (sizeof($row) == 0) {
-                            $this->status = "CFDI33167 El valor del campo TasaOCuota que corresponde a Retención no contiene un valor del catálogo c_TasaOcuota o se encuentra fuera de rango.";
+                            $this->status = "CFDI33167 El valor del campo TasaOCuota que corresponde a RetenciÃ³n no contiene un valor del catÃ¡logo c_TasaOcuota o se encuentra fuera de rango.";
                             $this->codigo = "33167 ".$this->status;
                             $this->mensaje = "ClaveProdServ=$ClaveProdServ Retencion Base=$Base Impuesto=$Impuesto TipoFactor=$TipoFactor TasaOCuota=$TasaOCuota";
                             return false;
@@ -722,7 +726,7 @@ class Sem_CFDI {
                     $sup = ceil($sup * $fac_moneda) / $fac_moneda;
                     $impo = (double)$i_Importe;
                     if ($impo < $inf || $impo > $sup) {
-                        $this->status = "CFDI33169 El valor del campo Importe que corresponde a Retención no se encuentra entre el limite inferior y superior permitido.";
+                        $this->status = "CFDI33169 El valor del campo Importe que corresponde a RetenciÃ³n no se encuentra entre el limite inferior y superior permitido.";
                         $this->codigo = "33169 ".$this->status." Inf=$inf sup=$sup impo=$impo";;
                         $this->mensaje = "ClaveProdServ=$ClaveProdServ Retencion Base=$Base Impuesto=$Impuesto inf=$inf sup=$sup TasaOCuota=$TasaOCuota";
                         return false;
@@ -748,7 +752,7 @@ class Sem_CFDI {
                     } elseif ($NumeroPedimento != null) {
                         $err= $this->valida_pedimento($NumeroPedimento);
                         if ($err > 0) {
-                            $this->status = "CFDI33170 El número de pedimento es inválido.";
+                            $this->status = "CFDI33170 El nÃºmero de pedimento es invÃ¡lido.";
                             $this->codigo = "33170 ".$this->status;
                             return false;
                         }
@@ -763,7 +767,7 @@ class Sem_CFDI {
                     $ClaveProdServ = $Parte->getAttribute('ClaveProdServ');
                     $ok = $this->Checa_Catalogo("c_ClaveProdServ", $ClaveProdServ);
                     if (!$ok) {
-                        $this->status = "CFDI33172 El campo ClaveProdServ, no contiene un valor del catálogo c_ClaveProdServ.";
+                        $this->status = "CFDI33172 El campo ClaveProdServ, no contiene un valor del catÃ¡logo c_ClaveProdServ.";
                         $this->codigo = "33172 ".$this->status;
                         $this->mensaje = "Concepto ClaveProdServ=$sv parte ClaveProdServ=$ClaveProdServ no en c_ClaveProdServ";
                         return false;
@@ -806,7 +810,7 @@ class Sem_CFDI {
                             } elseif ($NumeroPedimento != null) {
                                 $err= $this->valida_pedimento($NumeroPedimento);
                                 if ($err > 0) {
-                                    $this->status = "CFDI33177 El número de pedimento es inválido.";
+                                    $this->status = "CFDI33177 El nÃºmero de pedimento es invÃ¡lido.";
                                     $this->codigo = "33177 ".$this->status;
                                     return false;
                                 }
@@ -855,14 +859,14 @@ class Sem_CFDI {
                 $impu=$Retencion->getAttribute("Impuesto");
                 $ok = $this->Checa_Catalogo("c_Impuesto", $impu);
                 if (!$ok) {
-                    $this->status = "CFDI33185 El campo Impuesto no contiene un valor del catálogo c_Impuesto.";
+                    $this->status = "CFDI33185 El campo Impuesto no contiene un valor del catÃ¡logo c_Impuesto.";
                     $this->codigo = "33185 ".$this->status;
                     $this->mensaje = "totales retencion Impuesto=$impu";
                     return false;
                 }
                 $impo=$Retencion->getAttribute("Importe");
                 if (array_key_exists($impu,$rete)) {
-                    $this->status = "CFDI33186 Debe haber sólo un registro por cada tipo de impuesto retenido.";
+                    $this->status = "CFDI33186 Debe haber sÃ³lo un registro por cada tipo de impuesto retenido.";
                     $this->mensaje = "totales retencion Impuesto=$impu";
                     $this->codigo = "33186 ".$this->status;
                     return false;
@@ -878,7 +882,7 @@ class Sem_CFDI {
                 $dec_impo = $this->cantidad_decimales($impo);
                 if (!array_key_exists($impu,$acum_rete) ||
                     abs($acum_rete[$impu]-$impo)>0.001) {
-                    $this->status = "CFDI33189 El campo Importe correspondiente a Retención no es igual a la suma de los importes de los impuestos retenidos registrados en los conceptos donde el impuesto sea igual al campo impuesto de este elemento.";
+                    $this->status = "CFDI33189 El campo Importe correspondiente a RetenciÃ³n no es igual a la suma de los importes de los impuestos retenidos registrados en los conceptos donde el impuesto sea igual al campo impuesto de este elemento.";
                     $this->codigo = "33189 ".$this->status;
                     $this->mensaje = "totales retencion impu=$impu impo=$impo";;
                     return false;
@@ -903,7 +907,7 @@ class Sem_CFDI {
                 $impu=$Traslado->getAttribute("Impuesto");
                 $ok = $this->Checa_Catalogo("c_Impuesto", $impu);
                 if (!$ok) {
-                    $this->status = "CFDI33191 El campo Impuesto no contiene un valor del catálogo c_Impuesto.";
+                    $this->status = "CFDI33191 El campo Impuesto no contiene un valor del catÃ¡logo c_Impuesto.";
                     $this->codigo = "33191 ".$this->status;
                     $this->mensaje = "totales traslado Impuesto=$impu";
                     return false;
@@ -912,7 +916,7 @@ class Sem_CFDI {
                 $TipoFactor=$Traslado->getAttribute("TipoFactor");
                 $llave=$impu.$TasaOCuota;
                 if (array_key_exists($llave,$tras)) {
-                    $this->status = "CFDI33192 Debe haber sólo un registro con la misma combinación de impuesto, factor y tasa por cada traslado.";
+                    $this->status = "CFDI33192 Debe haber sÃ³lo un registro con la misma combinaciÃ³n de impuesto, factor y tasa por cada traslado.";
                     $this->codigo = "33192 ".$this->status;
                     $this->mensaje = "totales traslado Impuesto=$impu llave=$llave";
                     return false;
@@ -921,7 +925,7 @@ class Sem_CFDI {
                 if ($impu=="003" && $TipoFactor=="Cuota" && $TasaOCuota < 43.77) { // IEPS
                     $ok=true;
                 } else {
-                    $row = $this->Obten_Catalogo("c_TasaOCuota",$TasaOCuota,$impu,$TipoFactor);
+                    $row = $this->Obten_Catalogo("c_TasaOCuotaTras",$TasaOCuota,$impu,$TipoFactor);
                     if (sizeof($row) == 0) {
                         $this->status = "CFDI33193 El valor seleccionado debe corresponder a un valor del catalogo donde la columna impuesto corresponda con el campo impuesto y la columna factor corresponda con el campo TipoFactor.";
                         $this->codigo = "33193 ".$this->status;
@@ -956,6 +960,28 @@ class Sem_CFDI {
             return false;
         }
         // }}} Impuestos
+        if ($this->uso_iva8) {
+            $nocert = $Comprobante->getAttribute("NoCertificado");
+            $row = $this->conn->getrow("select lco_valido from pac_lco 
+                       where lco_rfc = '$rfc' and
+                             lco_valido in ('1','2') and
+                             lco_status = 'A' and
+                             lco_certificado = '$nocert'");
+            $lco_valido = (sizeof($row)>0) ? $row['lco_valido']:'0';
+            if ($lco_valido != "2") {
+                $this->status = "CFDI33196 El RFC no se encuentra registrado para aplicar el Estimulo Franja Fronteriza";
+                $this->codigo = "33196 ".$this->status;
+                $this->mensaje = "nocert=$nocert rfc=$rfc lco_valido=".$lco_valido;
+                return false;
+            }
+            $dec_cp = (int)$c_LugarExpedicion["decimales"];
+            if ($dec_cp!=1) {
+                $this->status = "CFDI33196 El codigo postal no corresponde a franja fronteriza.";
+                $this->codigo = "33196 ".$this->status;
+                $this->mensaje = "LugarExpedicion=$LugarExpedicion dec_cp=$dec_cp";
+                return false;
+            }
+        }
         $this->status = "CFDI00000 Validacion semantica de CFDI 3.3 Correcta";
         $this->codigo = "0 ".$this->status;
         return $ok;
@@ -974,7 +1000,7 @@ class Sem_CFDI {
         $rs = false;
         $cata = $this->conn->qstr($catalogo);
         $l = $this->conn->qstr($llave);
-        $qry = "select * from pac_catalogos where cata_cata = $cata and cata_llave = $l";
+        $qry = "select * from pac_Catalogos where cata_cata = $cata and cata_llave = $l";
         if ($prm1!="") {
             $p = $this->conn->qstr($prm1);
             $qry .= " and cata_prm1 = $p";
@@ -996,7 +1022,7 @@ class Sem_CFDI {
         $cant = 0;
         $cata = $this->conn->qstr($catalogo);
         $p = $this->conn->qstr($prm1);
-        $qry = "select count(*) from pac_catalogos where cata_cata = $cata and cata_prm1 = $p";
+        $qry = "select count(*) from pac_Catalogos where cata_cata = $cata and cata_prm1 = $p";
         $cant = $this->conn->getone($qry);
         return $cant;
     }
