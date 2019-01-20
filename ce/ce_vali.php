@@ -107,9 +107,6 @@ if ($_FILES['bala_ant']['name']!=="") {
     $bala_ant = file_get_contents($arch);
     unlink($arch);
 }
-
-
-
  /*
      * Todos los archivos que se requieren para hacer la validacion
      * fueron descargados del portal del SAT pero los tengo localmente
